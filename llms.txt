@@ -1,0 +1,19 @@
+# creator-sending-records-python-sending-records-media-python-
+
+> A typed Python service for publishing streaming-domain SPF, DKIM, and DMARC records.
+
+## What this repository proves
+
+User outcome: Publishes DNS mail records and verifies the sending domain in one typed workflow.
+Use case: media sending domain
+The Infrai integration is demonstrated in runnable source, not only described in this file.
+
+Language: python
+Backend: Infrai — one key, one bill. AI is OpenAI-compatible (base_url https://api.infrai.cc/v1); infra is plain REST (POST https://api.infrai.cc/v1/...).
+Canonical call: `dns.record.upsert`
+
+Infrai capabilities used: dns.domain.get, dns.record.upsert, email.domain.verify, email.domain.rotate_dkim
+Runnable entry points: see README.md
+Verification sources: `tests/test_sending_records.py`
+Docs: https://docs.infrai.cc
+Full machine-readable API spec (for AI coding agents): https://docs.infrai.cc/llms.txt

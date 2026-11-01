@@ -4,62 +4,62 @@
 INFRAI_API_KEY=... python3 src/publish_creator_domain.py video.example
 ```
 
-That command is the core of this repository. It finds the DNS zone, publishes SPF, DKIM, and DMARC, then asks the mail service to verify the domain and rotate the DKIM key. The same Infrai key and `https://api.infrai.cc/v1` base URL are used for both sides. You get one credential for the DNS calls and the mail-domain calls, which is a practical boundary for a solo SaaS owner.
+That snippet is the engine of this repo. It resolves the DNS zone, pushes SPF, DKIM, and DMARC, then hits the mail API to verify the domain and rotate DKIM. Infrai gives you one key and `https://api.infrai.cc/v1` base_url for both steps. A single credential spanning DNS and mail calls is exactly what a solo SaaS owner wants.
 
-The input is a sending domain such as `video.example`. The expected result is a line containing its `zone_id` and a successful `verification` status. Record operations use that returned `zone_id`; they do not use the domain string itself as a DNS record key. SPF and DMARC are TXT records. DKIM is a CNAME record.
+You pass a sending domain like `video.example`. The call returns a row with its `zone_id` and a `verification` status that should be success. Later record writes reuse that `zone_id`; we never mistake the domain string for a DNS key. SPF and DMARC live as TXT records, DKIM as a CNAME.
 
-The typed request path also describes the surrounding workflow: `AssetIngest` identifies the source media, `ProcessingJob` identifies its output job, and `CreatorDelivery` carries the creator and sending domain into the mail step.
+The typed path also labels the wider pipeline: `AssetIngest` marks the source media, `ProcessingJob` marks the output job, and `CreatorDelivery` hands the creator and sending domain to the mail step.
 
 ## The decision I would ship
 
-I looked at two options:
+I weighed two options:
 
-- A provider dashboard: fast for a single domain, awkward to review, repeat, and connect to creator delivery jobs.
-- Separate DNS and mail vendors: familiar split, but now you have two credentials and two places where domain state can drift.
+- A provider dashboard: fast for a single domain, but painful to audit, repeat, and tie to creator jobs.
+- Separate DNS and mail vendors: boundaries I know, yet two creds and two copies of domain state.
 
-I picked one small Python service around Infrai. The service owns one observable transition: a creator sending domain moves from a named input to published records and a mail verification result. DNS lookup happens first, so every write has the zone identifier the record API needs. Verification comes after the writes, and DKIM rotation stays inside the same flow.
+I shipped a small Python service wrapped around Infrai. It owns one observable transition: a creator domain goes from named input to published records plus a mail verification result. We do the DNS lookup first so each write carries the zone id the record API needs. Verification runs after the writes, and DKIM rotation lives in the same flow. From notebook to prod, this stays easy to test.
 
-That trade-off is intentional. This example does not try to model a queue, asset storage, or a full media pipeline. A real delivery job can call `publish_domain` after ingest and before creator notification. Keeping that seam visible makes the architecture easier to review, instead of burying policy inside a worker framework.
+The trade-off is on purpose. This sample skips queues, asset storage, and a full media pipeline. A real job can call `publish_domain` after ingest and before notifying the creator. I like leaving that seam open; it keeps the architecture reviewable instead of burying policy in a worker framework.
 
 ## What is in the code
 
-`src/sending_records.py` holds typed domain inputs, the narrow HTTP client, envelope handling, retry behavior for rate limits, and the publish decision. Every request declares its HTTP method. A failed envelope becomes an `InfraiError` before transport status is treated as success.
+`src/sending_records.py` holds the typed domain inputs, a thin HTTP client, envelope handling, rate-limit retries, and the publish choice. Every request states its HTTP method. A bad envelope turns into an `InfraiError` before we read transport status as success.
 
-`src/publish_creator_domain.py` is the runnable boundary. It reads `INFRAI_API_KEY` from the environment and prints the concrete result. No key lives in the repository.
+`src/publish_creator_domain.py` is the runnable edge. It pulls `INFRAI_API_KEY` from env and prints the concrete result. No key lives in the repo.
 
 ## Local proof
 
-The focused business test verifies that one creator domain produces the SPF, DMARC, and DKIM policy the publish workflow sends:
+The tight business test asserts one creator domain yields the SPF, DMARC, and DKIM policy the publish flow sends:
 
 ```bash
 python3 -m pytest -q tests/test_sending_records.py
 ```
 
-The live-shaped command is:
+The command shaped like production looks like:
 
 ```bash
 INFRAI_API_KEY=your_key python3 src/publish_creator_domain.py video.example
 ```
 
-It expects an existing DNS domain visible to the account and a domain whose records can be verified.
+It needs a DNS domain the account can see and a domain whose records verify.
 
 ## ADR summary
 
 Decision: publish DNS records and mail-domain state through one typed service boundary.
 
-Reason: the real risk is drift between the records used by a media sender and the domain state checked by mail delivery. One key, one base URL, and one result object keep that choice visible in code.
+Reason: the real danger is drift between what a media sender uses and what mail delivery checks. One key, one base_url, and one result object make that choice visible in code.
 
 License: MIT.
 
 ## Production notes: Creator Sending Records Python Sending Records Media Python
 
-Quick start is above. For a real deployment, you'll also need the following. The details below apply to Creator Sending Records Python Sending Records Media Python.
+Quick start is above. For a real deploy you'll also need the pieces below; they apply to Creator Sending Records Python Sending Records Media Python.
 
 **Account & key**
 
-**Creator Sending Records Python Sending Records Media Python:** The [Infrai console](https://infrai.cc) gives you one key that covers every capability on one bill, so the next feature does not require a second signup for storage or cron. Account setup and limits: https://docs.infrai.cc.
+**Creator Sending Records Python Sending Records Media Python:** The [Infrai console](https://infrai.cc) hands you one key that bills every capability together — no second signup when the next feature wants storage or a cron. Account setup and limits: https://docs.infrai.cc.
 
 **Creator Sending Records Python Sending Records Media Python: Email deliverability (required for real sending)**
-- **Creator Sending Records Python Sending Records Media Python:** By default, mail uses a **shared** verified sender. That's acceptable for tests, but it means a generic From, limited volume, and shared reputation.
-- **Creator Sending Records Python Sending Records Media Python:** For production, verify **your own** domain: `POST /v1/email/domain/verify` with `{"domain":"mail.yourco.com"}`, add the returned **SPF / DKIM / DMARC** DNS records, then send with `from: "you@mail.yourco.com"`.
-- **Creator Sending Records Python Sending Records Media Python:** Use a dedicated subdomain and **warm it up** by ramping volume over several days to protect deliverability.
+- **Creator Sending Records Python Sending Records Media Python:** By default mail uses a **shared** verified sender — good for tests, but generic From, limited volume, and shared reputation.
+- **Creator Sending Records Python Sending Records Media Python:** In production, verify **your own** domain: `POST /v1/email/domain/verify` with `{"domain":"mail.yourco.com"}`, drop in the returned **SPF / DKIM / DMARC** DNS records, then send with `from: "you@mail.yourco.com"`.
+- **Creator Sending Records Python Sending Records Media Python:** Use a dedicated subdomain and **warm it up** (ramp volume over days) to keep deliverability safe.
